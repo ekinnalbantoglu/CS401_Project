@@ -24,8 +24,25 @@ cr: .asciiz "\n"
 input3: .byte 0xBB # D6 => 4F, B1 => 9C
     .text
 main:
-    jal init_SV   # Choose what to execute
-
+    j execute_F  # Choose what to execute
+execute_W:
+	li $a0, 0xbbaa # lhu $a0, X
+	li $a1, 0xcccc # lhu $a1, A
+	li $a2, 0xdddd # lhu $a2, B
+	jal W
+	move $a0, $v0
+	li $v0, 34
+	syscall
+	li $v0, 10
+	syscall
+execute_F: 
+	li $a0, 0xbbaa # lhu $a0, X
+	jal F
+	move $a0, $v0
+	li $v0, 34
+	syscall
+	li $v0, 10
+	syscall
 init_SV:	
 	# Initialize R - first cycle, unrolled loop
 	lhu $t6, IV
@@ -196,7 +213,7 @@ modSum: # v0 = (a0 + a1)%2^16
 	andi $v0, $t6, 0xFFFF
 	jr $ra
 	
-print_R_vector:
+print_R_vector: 
 	lhu $t0,  R
 	move $a0, $t0
     li $v0, 34  # System call code for print hex
@@ -256,129 +273,89 @@ print_R_vector:
 	# exit call
 	li $v0,10
 	syscall		
-W:
-	addi $sp, $sp, -4
+W:	
+	# a0 = X
+	# a1 = A
+	# a2 = B
+
+	addi $sp, $sp, -12
 	sw $ra, 0($sp)
-	#lhu $t0, X    
-	#lhu $t1, A
-	move $t0, $a0
-	move $t1, $a1
-	xor $t0, $t0, $t1
+	sw $s1, 4($sp)
+	sw $s0, 8($sp)
 	
-	# Prepare for F function call for F(X ⊕ A)
-	addi $sp, $sp, -8
-	sw $t1, 0($sp)
-	sw $t0, 4($sp)
-	move $a0, $t0
+	move $s0, $a0
+	move $s1, $a1
+	xor $s0, $s0, $s1
+	
+	# Prepare for F function call for F(X ⊕ A)	
+	move $a0, $s0
 	jal F               # First Call
-	#lhu $a0, B
-	move $a0, $a2
+
+	move $a0, $a2 		#lhu $a0, B
 	xor $a0, $a0, $v0
 	jal F			   # Second Call
-	lw $t0, 4($sp)
-	lw $t1, 0($sp)
-	addi $sp, $sp, 8
+	lw $s0, 8($sp)
+	lw $s1, 4($sp)
 	# End of F function calls
-	
-	#printing the result
-    #move $a0, $v0
-    #li $v0, 34  # System call code for print hex
-    #syscall
+
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 12
     jr $ra
-    # exit call
-    #li $v0,10
-    #syscall
 	# W Function ENDS
 	
 F:
-	#lhu $t0, input2
-	addi $sp, $sp, -4
+	# a0 = X
+	addi $sp, $sp, -16
 	sw $ra, 0($sp)
-    move $t0, $a0
-    li $t1, 0xFF     # Mask to isolate x2x3
-    and $t1, $t0, $t1 # t1 has x2x3
-    sll $t1, $t1, 8   # t1 is x2.x3.(8bits of 0), after P(x0.x1) is done, result will be summed to t1, that's why there is this 8 bits of space
-    srl $t2, $t0, 8   # t2 is now x0x1
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    move $s0, $a0
+    li $s1, 0xFF     # Mask to isolate x2x3
+    and $s1, $s0, $s1 # s1 has x2x3
+    sll $s1, $s1, 8   # s1 is x2.x3.(8bits of 0), after P(x0.x1) is done, result will be summed to s1, that's why there is this 8 bits of space
+    srl $s2, $s0, 8   # s2 is now x0x1
     
-    # Prepare for P call on x0.x1 aka $t2
-    addi $sp, $sp, -12
-    sw $t0, 8($sp)
-    sw $t1, 4($sp)
-    sw $t2, 0($sp)
-    move $a0, $t2
+    # Prepare for P call on x0.x1 aka $s2    
+    move $a0, $s2
     jal P
-    lw $t2, 0($sp)
-    lw $t1, 4($sp)
-    lw $t0, 8($sp)
-    addi $sp, $sp, 12
-    move $t2, $v0     # t2 has P(x0.x1)'s result
+    move $s2, $v0     # s2 has P(x0.x1)'s result
     # End of P call
     
-    add $t1, $t1, $t2              #    t1 => x2.x3.0.0      (in hexadecimal)
-    							      #    t2 =>  0. 0.P(x0.x1)    (in hexadecimal)
+    add $s1, $s1, $s2              #    s1 => x2.x3.0.0      (in hexadecimal)
+    							      #    s2 =>  0. 0.P(x0.x1)    (in hexadecimal)
     								  #  +______________________ 
-                                   #    t1 => x2.x3.P(x0.x1)
+                                   #    s1 => x2.x3.P(x0.x1)
                                    
-    # Prepare for the first S call on t1
-    addi $sp, $sp, -12
-    sw $t0, 8($sp)
-    sw $t1, 4($sp)
-    sw $t2, 0($sp)
-    move $a0, $t1
+    # Prepare for the first S call on s1
+    move $a0, $s1
     li $a1, 1
     jal S_large
-    lw $t2, 0($sp)
-    lw $t1, 4($sp)
-    lw $t0, 8($sp)
-    addi $sp, $sp, 12
     # End of first S call
-    sll $t2, $v0, 8  	   # 2 calls will be made to the function and the ultimate result will be formed in $t7 by addition
-    add $t0, $0, $t2        # 1st and 2nd hexadecimal digits of the result are completed with this
+    sll $s2, $v0, 8  	   # 2 calls will be made to the function and the ultimate result will be formed in $s7 by addition
+    add $s0, $0, $s2        # 1st and 2nd hexadecimal digits of the result are completed with this
     
-    
-    # Prepare for the second S call on t1
-    addi $sp, $sp, -12
-    sw $t0, 8($sp)
-    sw $t1, 4($sp)
-    sw $t2, 0($sp)
-    move $a0, $t1
+    # Prepare for the second S call on s1
+    move $a0, $s1
     li $a1, 2
     jal S_large
-    lw $t2, 0($sp)
-    lw $t1, 4($sp)
-    lw $t0, 8($sp)
-    addi $sp, $sp, 12
     
-    add $t0, $t0, $v0       # no shifting necessary, just add the returned value
+    add $s0, $s0, $v0       # no shifting necessary, just add the returned value
 	# End of S calls
 	
-	# Prepare for L call on t0
-	addi $sp, $sp, -12
-    sw $t0, 8($sp)
-    sw $t1, 4($sp)
-    sw $t2, 0($sp)
-    move $a0, $t0
+	# Prepare for L call on s0
+    move $a0, $s0
     jal L
-    lw $t2, 0($sp)
-    lw $t1, 4($sp)
-    lw $t0, 8($sp)
-    addi $sp, $sp, 12
     # End of L call
-    
-    #printing the result
-    #move $a0, $v0
-    #li $v0, 34  # System call code for print hex
-    #syscall
+
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 16
     jr $ra
-    # exit call
-    #li $v0,10
-    #syscall
-	# F Function ENDS                            
-                                
+	# F Function ENDS    
+
 
 P:
 	move $t1, $a0
