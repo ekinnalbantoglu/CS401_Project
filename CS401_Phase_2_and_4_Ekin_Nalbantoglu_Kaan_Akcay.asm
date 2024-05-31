@@ -13,9 +13,9 @@ C1: .half 0x1111
 #R: .space 16  # Allocate 16 bytes for 8 half-word elements
 K:  .half  0x2301, 0x6745, 0xAB89, 0xEFCD, 0xDCFE, 0x98BA, 0x5476, 0x1032
 IV:  .half  0x3412, 0x7856, 0xBC9A, 0xF0DE
-R:  .half  0x8957, 0x112b, 0xed92, 0x2637, 0xe39e, 0x18c7, 0x96dc, 0x42fa
-Plain:  .space 16
-C:  .half  0x926a, 0xf9f8, 0x5bc5, 0xb575, 0x9707, 0x06a0, 0x3407, 0x33f2
+R:  .space 16
+P:  .half 0x1100, 0x3322, 0x5544, 0x7766, 0x9988, 0xBBAA, 0xDDCC, 0xFFEE
+C:  .space 16
 T:  .space 16
 
 Perm: .word 0,1,6,2,4,3,7,5	
@@ -29,62 +29,541 @@ LongTable_1: .byte 0x47,0x4C,0x4E,0x49,0x42,0x41,0x45,0x4F,0x4B,0x46,0x4D,0x40,0
 cr: .asciiz "\n"
 input3: .byte 0xBB # D6 => 4F, B1 => 9C
     .text
+    
+    
+ 
+ 
+ 
+ 
+ 
+ init_SV:	
+	# Initialize R - first cycle, unrolled loop
+	lhu $t6, IV
+	sh $t6,  R
+	sh $t6,  R+8
+	lhu $t6, IV+2
+	sh $t6,  R+2
+	sh $t6,  R+10
+	lhu $t6, IV+4
+	sh $t6,  R+4
+	sh $t6,  R+12
+	lhu $t6, IV+6
+	sh $t6,  R+6
+	sh $t6,  R+14
+
+	addi $sp, $sp, -4
+	sw $s6, 0($sp)
+	li $s6, 0              # Initialize loop index to 0
+iter_loop:
+    bgt $s6, 3, end_iter_loop  # Check if loop index exceeds 3, if so, jump to end_iter_loop
+	
+	lhu $a0,  R       # arg0 for mod sum0
+	move $a1, $s6	   # arg1 for mod sum0
+	jal modSum
+	move $a0, $v0      # Immediately after modSum, call W, a0 is the 1st argument of W
+	lhu $a1,  K+2      # put K1 to 2nd argument of W call
+	lhu $a2,  K+6      # put K3 to 3rd argument of W call
+	jal W
+	move $t0, $v0      # line 5 of the algorithm is now completed
+	addi $sp, $sp, -4
+	sw $t0, 0($sp)
+	
+	lhu $a0,  R+2       # arg0 for mod sum1
+	move $a1, $t0	   # arg1 for mod sum1
+	jal modSum
+	move $a0, $v0      # Immediately after modSum, call W, a0 is the 1st argument of W
+	lhu $a1,  K+10      # put K5 to 2nd argument of W call
+	lhu $a2,  K+14      # put K7 to 3rd argument of W call
+	jal W
+	move $t1, $v0      # line 6 of the algorithm is now completed
+	addi $sp, $sp, -4
+	sw $t1, 0($sp)
+	
+	lhu $a0,  R+4       # arg0 for mod sum2
+	move $a1, $t1	   # arg1 for mod sum2
+	jal modSum
+	move $a0, $v0      # Immediately after modSum, call W, a0 is the 1st argument of W
+	lhu $a1,  K      # put K0 to 2nd argument of W call
+	lhu $a2,  K+4      # put K2 to 3rd argument of W call
+	jal W
+	move $t2, $v0      # line 7 of the algorithm is now completed
+	addi $sp, $sp, -4
+	sw $t2, 0($sp)
+	
+	lhu $a0,  R+6       # arg0 for mod sum3	
+	move $a1, $t2	   # arg1 for mod sum3
+	jal modSum
+	move $a0, $v0      # Immediately after modSum, call W, a0 is the 1st argument of W
+	lhu $a1,  K+8      # put K4 to 2nd argument of W call
+	lhu $a2,  K+12      # put K6 to 3rd argument of W call
+	jal W
+	move $t3, $v0      # line 8 of the algorithm is now completed	
+	addi $sp, $sp, -4
+	sw $t3, 0($sp)
+	
+	# Lines 5,6,7,8 done 
+	
+	# line 9
+	lhu $a0,  R  # Preparing for modSum
+	lw $t3, 0($sp)
+	addi $sp, $sp, 4
+	move $a1, $t3
+	jal modSum
+	
+	rol $t4, $v0, 7   # Start circular rotate
+	andi $t5, $t4, 0xFFFF0000 # t5 has the upper half of t4
+	srl $t5, $t5, 16
+	andi $t4, $t4, 0x0000FFFF # t4 has the lower half
+	add $t4, $t4, $t5 # rotation completed
+	sh $t4,  R
+	
+	# line 10
+	lhu $a0,  R+2  # Preparing for modSum
+	lw $t0, 8($sp)
+	addi $sp, $sp, 4
+	move $a1, $t0
+	jal modSum
+	
+	ror $t4, $v0, 4   # Start circular rotate
+	andi $t5, $t4, 0xFFFF0000 # t5 has the upper half of t4
+	srl $t5, $t5, 16
+	andi $t4, $t4, 0x0000FFFF # t4 has the lower half
+	add $t4, $t4, $t5 # rotation completed
+	sh $t4,  R+2
+	
+	# line 11
+	lhu $a0,  R+4  # Preparing for modSum
+	lw $t1, 0($sp)
+	addi $sp, $sp, 4
+	move $a1, $t1
+	jal modSum
+	
+	rol $t4, $v0, 2   # Start circular rotate
+	andi $t5, $t4, 0xFFFF0000 # t5 has the upper half of t4
+	srl $t5, $t5, 16
+	andi $t4, $t4, 0x0000FFFF # t4 has the lower half
+	add $t4, $t4, $t5 # rotation completed
+	sh $t4,  R+4
+	
+	# line 12
+	lhu $a0,  R+6  # Preparing for modSum
+	lw $t2, -8($sp)
+	addi $sp, $sp, 4
+	move $a1, $t2
+	jal modSum
+	
+	ror $t4, $v0, 9   # Start circular rotate
+	andi $t5, $t4, 0xFFFF0000 # t5 has the upper half of t4
+	srl $t5, $t5, 16
+	andi $t4, $t4, 0x0000FFFF # t4 has the lower half
+	add $t4, $t4, $t5 # rotation completed
+	sh $t4,  R+6
+	
+	# Lines 9,10,11,12 are done
+	
+	# Line 13
+	lhu $t4,  R+6 
+	lhu $t5,  R+8
+	xor $t4, $t4, $t5
+	sh $t4,  R+8
+	
+	# Line 14
+	lhu $t4,  R+10 
+	lhu $t5,  R+2
+	xor $t4, $t4, $t5
+	sh $t4,  R+10
+	
+	# Line 15
+	lhu $t4,  R+12 
+	lhu $t5,  R+4
+	xor $t4, $t4, $t5
+	sh $t4,  R+12
+	
+	# Line 16
+	lhu $t4,  R+14 
+	lhu $t5,  R
+	xor $t4, $t4, $t5
+	sh $t4,  R+14
+	
+	# Lines 13,14,15,16 done
+	
+    addi $s6, $s6, 1        # Increment loop index
+    j iter_loop             # Jump back to the start of the loop
+
+end_iter_loop:
+	
+	# Deallocate s6
+	lw $s6, 0($sp)
+	addi $sp, $sp, 4
+	
+	# Last loop at lines 18-20 is not required, R is already at its final form
+	j phase3
+	
+
+modSum: # v0 = (a0 + a1)%2^16
+	add $t6, $a0, $a1
+	andi $v0, $t6, 0xFFFF
+	jr $ra
+	
+print_R_vector: 
+	lhu $t0,  R
+	move $a0, $t0
+    li $v0, 34  # System call code for print hex
+    syscall
+    la $a0,cr
+	li $v0,4
+	syscall
+	lhu $t0,  R+2
+	move $a0, $t0
+    li $v0, 34  # System call code for print hex
+    syscall
+    la $a0,cr
+	li $v0,4
+	syscall
+	lhu $t0,  R+4
+	move $a0, $t0
+    li $v0, 34  # System call code for print hex
+    syscall
+    la $a0,cr
+	li $v0,4
+	syscall
+	lhu $t0,  R+6
+	move $a0, $t0
+    li $v0, 34  # System call code for print hex
+    syscall
+    la $a0,cr
+	li $v0,4
+	syscall
+	lhu $t0,  R+8
+	move $a0, $t0
+    li $v0, 34  # System call code for print hex
+    syscall
+    la $a0,cr
+	li $v0,4
+	syscall
+	lhu $t0,  R+10
+	move $a0, $t0
+    li $v0, 34  # System call code for print hex
+    syscall
+    la $a0,cr
+	li $v0,4
+	syscall
+	lhu $t0,  R+12
+	move $a0, $t0
+    li $v0, 34  # System call code for print hex
+    syscall
+    la $a0,cr
+	li $v0,4
+	syscall
+	lhu $t0,  R+14
+	move $a0, $t0
+    li $v0, 34  # System call code for print hex
+    syscall
+    la $a0,cr
+	li $v0,4
+	syscall
+	# exit call
+	li $v0,10
+	syscall		
+	
+	
+	
+ ############### ############### ############### ############### ############### ############### ############### ############### ############### ############### ############### ############### ############### ###############
+ 
+phase3:  
+    la $t0, P          # Load address of plaintext array P
+    la $t1, K          # Load address of key array K
+    la $t2, R          # Load address of state vector R
+    la $t3, C          # Load address to store ciphertext C
+    li $t4, 0          # Index for arrays, starts at 0
+    la $s6, T
+    
+    
+encryption_loop:
+    lhu $s0, 0($t0)     # Load the plaintext element at index $t4 from P into $a0
+    lhu $t5, 0($t2)     # Load R0 from the R array into $t5
+    addu $t6, $s0, $t5 # R0 +P (implicily mod2^16 oluyormuş)
+    andi $t6, $t6, 0xFFFF  # Ensure the result is within 16 bits
+    
+    lhu $t7, 0($t1)     # Load K0 from the K array into $t7
+    lhu $t8, 2($t1)     # Load K1 from the K array into $t8
+    lhu $t9, 2($t2)     # Load R1 from the R array into $t9
+    xor $s1, $t7, $t5  # K0 ⊕ R0, result stored in $s1
+    xor $s2, $t8, $t9  # K1 ⊕ R1, assuming R1 is the same as R0 here, replace $t5 if different
+    
+     # Prepare for L function call for L(K0 ⊕ R0)
+    move $a0, $s1       # Move XOR result K0 ⊕ R0 into $a0 as argument for L function
+    jal L               # Call L function
+    move $s1, $v0       # Store the result back into $s1
+    
+    move $a0, $s2  #move XOR result K1 ⊕ R1 into $a0 as argument for L function
+    jal L
+    move $s2, $v0  #store the result back into s2
+    
+    move $a0, $t6       # First argument (R0 + P) mod 2^16
+    move $a1, $s1       # Second argument L(K0 ⊕ R0)
+    move $a2, $s2       # Third argument L(K1 ⊕ R1)
+    jal W               # Jump and link to W function
+    move $s3, $v0       # Store result from W in $s3 = t0 in line 1 for later use !!!!!!!!!!!!!!!!!!
+    
+     # New calculation: W((R1 + t0) mod 2^16, L(K2 ⊕ R2), L(K3 ⊕ R3)) line 2
+    addu $t6, $t9, $s3  # R1 + t0 (implicitly modulo 2^16), reuse $t6
+    andi $t6, $t6, 0xFFFF  # Ensure the result is within 16 bits
+    lhu $t7, 4($t1)     # Load K2 from the K array into $t7
+    lhu $t8, 6($t1)     # Load K3 from the K array into $t8
+    lhu $t5, 4($t2)     # Load R2 from the R array into $t5, reuse $t5
+    lhu $t9, 6($t2)     # Load R3 from the R array into $t9, reuse $t9
+    xor $s1, $t7, $t5  # K2 ⊕ R2, result stored in $s1
+    xor $s2, $t8, $t9  # K3 ⊕ R3, result stored in $s2	
+    
+    # Process L(K2 ⊕ R2)
+    move $a0, $s1       # Move XOR result K2 ⊕ R2 into $a0 as argument for L function
+    jal L               # Call L function
+    move $s1, $v0       # Store the result back into $s4
+
+    # Process L(K3 ⊕ R3)
+    move $a0, $s2       # Move XOR result K3 ⊕ R3 into $a0 as argument for L function
+    jal L               # Call L function again
+    move $s2, $v0       # Store the result back into $s5
+
+    # Call W function with arguments: $t6, $s4, $s5
+    move $a0, $t6       # First argument (R1 + t0) mod 2^16
+    move $a1, $s1       # Second argument L(K2 ⊕ R2)
+    move $a2, $s2       # Third argument L(K3 ⊕ R3)
+    jal W               # Jump and link to W function
+    move $s4, $v0       # Store result from W in $s4 = t1 in line2 for later use !!!!!!!!!!!
+
+    # New calculation: W((R2 + t1) mod 2^16, L(K4 ⊕ R4), L(K5 ⊕ R5)) line 3
+    addu $t6, $t5, $s4  # R2 + t1 (implicitly modulo 2^16), reuse $t6
+    andi $t6, $t6, 0xFFFF  # Ensure the result is within 16 bits
+    lhu $t7, 8($t1)     # Load K4 from the K array into $t7
+    lhu $t8, 10($t1)    # Load K5 from the K array into $t8
+    lhu $t5, 8($t2)     # Load R4 from the R array into $t5, reuse $t5
+    lhu $t9, 10($t2)    # Load R5 from the R array into $t9, reuse $t9
+    xor $s1, $t7, $t5  # K4 ⊕ R4, result stored in $s1
+    xor $s2, $t8, $t9  # K5 ⊕ R5, result stored in $s2
+    
+    # Process L(K4 ⊕ R4)
+    move $a0, $s1       # Move XOR result K4 ⊕ R4 into $a0 as argument for L function
+    jal L               # Call L function
+    move $s1, $v0       # Store the result back into $s1
+
+    # Process L(K5 ⊕ R5)
+    move $a0, $s2       # Move XOR result K5 ⊕ R5 into $a0 as argument for L function
+    jal L               # Call L function again
+    move $s2, $v0       # Store the result back into $s2
+    
+    # Call W function with arguments: $t6, $s1, $s2
+    move $a0, $t6       # First argument (R2 + t1) mod 2^16
+    move $a1, $s1       # Second argument L(K4 ⊕ R4)
+    move $a2, $s2       # Third argument L(K5 ⊕ R5)
+    jal W               # Jump and link to W function
+    move $s5, $v0       # Store result from W in $s5 = t2 in line3 for later use !!!!!!!!!
+    
+    # Final calculation: C ← W((R3 + t2) mod 2^16, L(K6 ⊕ R6), L(K7 ⊕ R7)) + R0 mod 2^16
+    lhu $t9, 6($t2)
+    addu $t6, $t9, $s5  # R3 + t2 (implicitly modulo 2^16), reuse $t6
+    andi $t6, $t6, 0xFFFF  # Ensure the result is within 16 bits
+    lhu $t7, 12($t1)    # Load K6 from the K array into $t7
+    lhu $t8, 14($t1)    # Load K7 from the K array into $t8
+    lhu $t5, 12($t2)    # Load R6 from the R array into $t5, reuse $t5
+    lhu $t9, 14($t2)    # Load R7 from the R array into $t9, reuse $t9
+    xor $s1, $t7, $t5  # K6 ⊕ R6, result stored in $s1
+    xor $s2, $t8, $t9  # K7 ⊕ R7, result stored in $s2
+
+    # Process L(K6 ⊕ R6)
+    move $a0, $s1       # Move XOR result K6 ⊕ R6 into $a0 as argument for L function
+    jal L               # Call L function
+    move $s1, $v0       # Store the result back into $s1
+
+    # Process L(K7 ⊕ R7)
+    move $a0, $s2       # Move XOR result K7 ⊕ R7 into $a0 as argument for L function
+    jal L               # Call L function again
+    move $s2, $v0       # Store the result back into $s2
+
+    # Call W function with arguments: $t6, $s1, $s2
+    move $a0, $t6       # First argument (R3 + t2) mod 2^16
+    move $a1, $s1       # Second argument L(K6 ⊕ R6)
+    move $a2, $s2       # Third argument L(K7 ⊕ R7)
+    jal W               # Jump and link to W function
+    lhu $t5, 0($t2)
+    addu $t6, $v0, $t5  # Add R0 mod 2^16 (zaten mod alıyormuşşş)
+    andi $t6, $t6, 0xFFFF  # Ensure the result is within 16 bits (ensure da oldun)
+    sh  $t6, 0($t3)      # Store the result in the C array
+    
+    # Store T0 ← (R0 + t2) mod 2^16 in the array at index 0
+    lhu $t5, 0($t2)      # Load R0 from the R array into $t5
+    addu $t6, $t5, $s5  # R0 + t2 (implicitly modulo 2^16)
+    andi $t6, $t6, 0xFFFF  # Ensure the result is within 16 bits
+    sh $t6, 0($s6)      # Store the result in the T array at index 0
+
+    # Store T1 ← (R1 + t0) mod 2^16 in the array at index 1
+    lhu $t5, 2($t2)      # Load R1 from the R array into $t5
+    addu $t6, $t5, $s3  # R1 + t0 (implicitly modulo 2^16)
+    andi $t6, $t6, 0xFFFF  # Ensure the result is within 16 bits
+    sh $t6, 2($s6)      # Store the result in the T array at index 1
+    
+    # Store T2 ← (R2 + t1) mod 2^16 in the array at index 2
+    lhu $t5, 4($t2)      # Load R2 from the R array into $t5
+    addu $t6, $t5, $s4  # R2 + t1 (implicitly modulo 2^16)
+    andi $t6, $t6, 0xFFFF  # Ensure the result is within 16 bits
+    sh $t6, 4($s6)      # Store the result in the T array at index 2
+    
+    # Store T3 ← (R3 + R0 + t2 + t0) mod 2^16 in the array at index 3
+    lhu $t5, 6($t2) #load R3
+    lhu $t6, 0($t2) #load R0
+    addu $t6, $t6, $t5  #R3 + R0
+    addu $t6, $t6, $s5  #R3 + R0 + t2
+    addu $t6, $t6, $s3  #R3 + R0 + t2 + t0
+    andi $t6, $t6, 0xFFFF  # Ensure the result is within 16 bits
+    sh $t6, 6($s6)
+    
+    #9: T4 ←R4 ⊕((R3 +R0 +t2 +t0)mod216)
+    lhu $t5, 8($t2) # Load R4 from the R array into $t5
+    xor $t6, $t6, $t5 # R4 ⊕ (previously calculated value in $t6)
+    sh $t6, 8($s6) # Store the result in the T array at index 4
+    
+    #10: T5 ←R5 ⊕((R1 +t0)mod216)
+    lhu $t5, 10($t2)     # Load R5 from the R array into $t5
+    lhu $t6, 2($t2)      # Load R1 from the R array into $t7
+    addu $t6, $t6, $s3  # R1 + t0 (implicitly modulo 2^16)
+    andi $t6, $t6, 0xFFFF  # Ensure the result is within 16 bits
+    xor $t6, $t5, $t6   # R5 ⊕ (R1 + t0)
+    sh $t6, 10($s6)     # Store the result in the T array at index 5
+    
+    #11: T6 ←R6 ⊕((R2 +t1)mod2^16)
+    lhu $t5, 12($t2)     # Load R6 from the R array into $t5
+    lhu $t6, 4($t2)      # Load R2 from the R array into $t6
+    addu $t6, $t6, $s4  # R2 + t1 (implicitly modulo 2^16)
+    andi $t6, $t6, 0xFFFF  # Ensure the result is within 16 bits
+    xor $t6, $t5, $t6   # R6 ⊕ (R2 + t1)
+    sh $t6, 12($s6)     # Store the result in the T array at index 6
+    
+    # Store T7 ← R7 ⊕ ((R0 + t2) mod 2^16) in the array at index 7
+    lhu $t5, 14($t2)     # Load R7 from the R array into $t5
+    lhu $t6, 0($t2)      # Load R0 from the R array into $t6
+    addu $t6, $t6, $s5  # R0 + t2 (implicitly modulo 2^16)
+    andi $t6, $t6, 0xFFFF  # Ensure the result is within 16 bits
+    xor $t6, $t5, $t6   # R7 ⊕ (R0 + t2)
+    sh $t6, 14($s6)     # Store the result in the T array at index 7
+    
+    # Copy T array values back to R array
+    li $t7, 0           # Initialize loop counter
+
+copy_loop:
+    lhu $t8, 0($s6)      # Load value from T array
+    sh $t8, 0($t2)      # Store value to R array
+    addiu $s6, $s6, 2   # Move to the next element in T array
+    addiu $t2, $t2, 2   # Move to the next element in R array
+    addiu $t7, $t7, 1   # Increment loop counter
+    bne $t7, 8, copy_loop # Continue loop if counter is not 8    
+    
+    subiu $s6, $s6, 16  # Decrement address back by 16 bytes (8 half-words)
+    subiu $t2, $t2, 16  # Decrement address back by 16 bytes (8 half-words)
+
+    
+    
+    addiu $t0, $t0, 2  # Move to the next element in P (16-bit, 2 bytes increment)
+    addiu $t3, $t3, 2  # moving to next element in C
+    addiu $t4, $t4, 1  # Increment the loop counter by 1
+    bne $t4, 8, encryption_loop  # Branch if $t4 is not equal to 8, continue the loop
+    
+    # Print the values of the C array
+    la $t3, C          # Reload address to store ciphertext C
+    li $t4, 0          # Reset index for C array
+    
+print_loop:
+	
+    j main
+    lhu $t5, 0($t3)     # Load the value from the C array
+    li $v0, 34         # Print hex integer
+    move $a0, $t5      # Move the value to print to $a0
+    syscall            # Make the system call to print
+    la $a0, cr    # Load address of newline character
+    li $v0, 4          # Print string
+    syscall            # Make the system call to print newline
+    addiu $t3, $t3, 2  # Move to the next element in C array
+    addiu $t4, $t4, 1  # Increment the loop counter
+    bne $t4, 8, print_loop # Continue loop if counter is not 8
+    
+    li $v0, 10
+    syscall
+ 
+ 
+ 
+ ############### ############### ############### ############### ############### ############### ############### ############### ############### ############### ############### ###############
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
 main:
+
+	
 	# Your decryption function should return the plaintext P[8], given the ciphertext C[8].
 	la $a0, C
-	la $a1, Plain
+	
+	la $a1, P
 	jal decrypt
 	
-   	lhu $t0, Plain
+   	lhu $t0, P
     move $a0, $t0
     li $v0, 34  # System call code for print hex
     syscall
     la $a0,cr
     li $v0,4
     syscall
-    lhu $t0, Plain+2
+    lhu $t0, P+2
     move $a0, $t0
     li $v0, 34  # System call code for print hex
     syscall
     la $a0,cr
     li $v0,4
     syscall
-    lhu $t0, Plain+4
+    lhu $t0, P+4
     move $a0, $t0
     li $v0, 34  # System call code for print hex
     syscall
     la $a0,cr
     li $v0,4
     syscall
-    lhu $t0, Plain+6
+    lhu $t0, P+6
     move $a0, $t0
     li $v0, 34  # System call code for print hex
     syscall
     la $a0,cr
     li $v0,4
     syscall
-    lhu $t0, Plain+8
+    lhu $t0, P+8
     move $a0, $t0
     li $v0, 34  # System call code for print hex
     syscall
     la $a0,cr
     li $v0,4
     syscall
-    lhu $t0, Plain+10
+    lhu $t0, P+10
     move $a0, $t0
     li $v0, 34  # System call code for print hex
     syscall
     la $a0,cr
     li $v0,4
     syscall
-    lhu $t0, Plain+12
+    lhu $t0, P+12
     move $a0, $t0
     li $v0, 34  # System call code for print hex
     syscall
     la $a0,cr
     li $v0,4
     syscall
-    lhu $t0, Plain+14
+    lhu $t0, P+14
     move $a0, $t0
     li $v0, 34  # System call code for print hex
     syscall
@@ -343,365 +822,90 @@ inv_W: # W^−1(X,A,B) = F^−1(F^−1(X) ⊕ B) ⊕ A
     addi $sp, $sp, 12
     jr $ra
     
-init_SV:	
-	# Initialize R - first cycle, unrolled loop
-	lhu $t6, IV
-	sh $t6,  R
-	sh $t6,  R+8
-	lhu $t6, IV+2
-	sh $t6,  R+2
-	sh $t6,  R+10
-	lhu $t6, IV+4
-	sh $t6,  R+4
-	sh $t6,  R+12
-	lhu $t6, IV+6
-	sh $t6,  R+6
-	sh $t6,  R+14
 
-	addi $sp, $sp, -4
-	sw $s6, 0($sp)
-	li $s6, 0              # Initialize loop index to 0
-iter_loop:
-    bgt $s6, 3, end_iter_loop  # Check if loop index exceeds 3, if so, jump to end_iter_loop
-	
-	lhu $a0,  R       # arg0 for mod sum0
-	move $a1, $s6	   # arg1 for mod sum0
-	jal modSum
-	move $a0, $v0      # Immediately after modSum, call W, a0 is the 1st argument of W
-	lhu $a1,  K+2      # put K1 to 2nd argument of W call
-	lhu $a2,  K+6      # put K3 to 3rd argument of W call
-	jal W
-	move $t0, $v0      # line 5 of the algorithm is now completed
-	addi $sp, $sp, -4
-	sw $t0, 0($sp)
-	
-	lhu $a0,  R+2       # arg0 for mod sum1
-	move $a1, $t0	   # arg1 for mod sum1
-	jal modSum
-	move $a0, $v0      # Immediately after modSum, call W, a0 is the 1st argument of W
-	lhu $a1,  K+10      # put K5 to 2nd argument of W call
-	lhu $a2,  K+14      # put K7 to 3rd argument of W call
-	jal W
-	move $t1, $v0      # line 6 of the algorithm is now completed
-	addi $sp, $sp, -4
-	sw $t1, 0($sp)
-	
-	lhu $a0,  R+4       # arg0 for mod sum2
-	move $a1, $t1	   # arg1 for mod sum2
-	jal modSum
-	move $a0, $v0      # Immediately after modSum, call W, a0 is the 1st argument of W
-	lhu $a1,  K      # put K0 to 2nd argument of W call
-	lhu $a2,  K+4      # put K2 to 3rd argument of W call
-	jal W
-	move $t2, $v0      # line 7 of the algorithm is now completed
-	addi $sp, $sp, -4
-	sw $t2, 0($sp)
-	
-	lhu $a0,  R+6       # arg0 for mod sum3	
-	move $a1, $t2	   # arg1 for mod sum3
-	jal modSum
-	move $a0, $v0      # Immediately after modSum, call W, a0 is the 1st argument of W
-	lhu $a1,  K+8      # put K4 to 2nd argument of W call
-	lhu $a2,  K+12      # put K6 to 3rd argument of W call
-	jal W
-	move $t3, $v0      # line 8 of the algorithm is now completed	
-	addi $sp, $sp, -4
-	sw $t3, 0($sp)
-	
-	# Lines 5,6,7,8 done 
-	
-	# line 9
-	lhu $a0,  R  # Preparing for modSum
-	lw $t3, 0($sp)
-	addi $sp, $sp, 4
-	move $a1, $t3
-	jal modSum
-	
-	rol $t4, $v0, 7   # Start circular rotate
-	andi $t5, $t4, 0xFFFF0000 # t5 has the upper half of t4
-	srl $t5, $t5, 16
-	andi $t4, $t4, 0x0000FFFF # t4 has the lower half
-	add $t4, $t4, $t5 # rotation completed
-	sh $t4,  R
-	
-	# line 10
-	lhu $a0,  R+2  # Preparing for modSum
-	lw $t0, 8($sp)
-	addi $sp, $sp, 4
-	move $a1, $t0
-	jal modSum
-	
-	ror $t4, $v0, 4   # Start circular rotate
-	andi $t5, $t4, 0xFFFF0000 # t5 has the upper half of t4
-	srl $t5, $t5, 16
-	andi $t4, $t4, 0x0000FFFF # t4 has the lower half
-	add $t4, $t4, $t5 # rotation completed
-	sh $t4,  R+2
-	
-	# line 11
-	lhu $a0,  R+4  # Preparing for modSum
-	lw $t1, 0($sp)
-	addi $sp, $sp, 4
-	move $a1, $t1
-	jal modSum
-	
-	rol $t4, $v0, 2   # Start circular rotate
-	andi $t5, $t4, 0xFFFF0000 # t5 has the upper half of t4
-	srl $t5, $t5, 16
-	andi $t4, $t4, 0x0000FFFF # t4 has the lower half
-	add $t4, $t4, $t5 # rotation completed
-	sh $t4,  R+4
-	
-	# line 12
-	lhu $a0,  R+6  # Preparing for modSum
-	lw $t2, -8($sp)
-	addi $sp, $sp, 4
-	move $a1, $t2
-	jal modSum
-	
-	ror $t4, $v0, 9   # Start circular rotate
-	andi $t5, $t4, 0xFFFF0000 # t5 has the upper half of t4
-	srl $t5, $t5, 16
-	andi $t4, $t4, 0x0000FFFF # t4 has the lower half
-	add $t4, $t4, $t5 # rotation completed
-	sh $t4,  R+6
-	
-	# Lines 9,10,11,12 are done
-	
-	# Line 13
-	lhu $t4,  R+6 
-	lhu $t5,  R+8
-	xor $t4, $t4, $t5
-	sh $t4,  R+8
-	
-	# Line 14
-	lhu $t4,  R+10 
-	lhu $t5,  R+2
-	xor $t4, $t4, $t5
-	sh $t4,  R+10
-	
-	# Line 15
-	lhu $t4,  R+12 
-	lhu $t5,  R+4
-	xor $t4, $t4, $t5
-	sh $t4,  R+12
-	
-	# Line 16
-	lhu $t4,  R+14 
-	lhu $t5,  R
-	xor $t4, $t4, $t5
-	sh $t4,  R+14
-	
-	# Lines 13,14,15,16 done
-	
-    addi $s6, $s6, 1        # Increment loop index
-    j iter_loop             # Jump back to the start of the loop
+W:	
+	# a0 = X
+	# a1 = A
+	# a2 = B
 
-end_iter_loop:
-	
-	# Deallocate s6
-	lw $s6, 0($sp)
-	addi $sp, $sp, 4
-	
-	# Last loop at lines 18-20 is not required, R is already at its final form
-	lhu $a0, R
-	j print_R_vector
-
-
-modSum: # v0 = (a0 + a1)%2^16
-	add $t6, $a0, $a1
-	andi $v0, $t6, 0xFFFF
-	jr $ra
-	
-print_R_vector:
-	lhu $t0,  R
-	move $a0, $t0
-    li $v0, 34  # System call code for print hex
-    syscall
-    la $a0,cr
-	li $v0,4
-	syscall
-	lhu $t0,  R+2
-	move $a0, $t0
-    li $v0, 34  # System call code for print hex
-    syscall
-    la $a0,cr
-	li $v0,4
-	syscall
-	lhu $t0,  R+4
-	move $a0, $t0
-    li $v0, 34  # System call code for print hex
-    syscall
-    la $a0,cr
-	li $v0,4
-	syscall
-	lhu $t0,  R+6
-	move $a0, $t0
-    li $v0, 34  # System call code for print hex
-    syscall
-    la $a0,cr
-	li $v0,4
-	syscall
-	lhu $t0,  R+8
-	move $a0, $t0
-    li $v0, 34  # System call code for print hex
-    syscall
-    la $a0,cr
-	li $v0,4
-	syscall
-	lhu $t0,  R+10
-	move $a0, $t0
-    li $v0, 34  # System call code for print hex
-    syscall
-    la $a0,cr
-	li $v0,4
-	syscall
-	lhu $t0,  R+12
-	move $a0, $t0
-    li $v0, 34  # System call code for print hex
-    syscall
-    la $a0,cr
-	li $v0,4
-	syscall
-	lhu $t0,  R+14
-	move $a0, $t0
-    li $v0, 34  # System call code for print hex
-    syscall
-    la $a0,cr
-	li $v0,4
-	syscall
-	# exit call
-	li $v0,10
-	syscall		
-W:
-	addi $sp, $sp, -4
+	addi $sp, $sp, -12
 	sw $ra, 0($sp)
-	#lhu $t0, X    
-	#lhu $t1, A
-	move $t0, $a0
-	move $t1, $a1
-	xor $t0, $t0, $t1
+	sw $s1, 4($sp)
+	sw $s0, 8($sp)
 	
-	# Prepare for F function call for F(X ⊕ A)
-	addi $sp, $sp, -8
-	sw $t1, 0($sp)
-	sw $t0, 4($sp)
-	move $a0, $t0
+	move $s0, $a0
+	move $s1, $a1
+	xor $s0, $s0, $s1
+	
+	# Prepare for F function call for F(X ⊕ A)	
+	move $a0, $s0
 	jal F               # First Call
-	
-	
-	#lhu $a0, B
-	move $a0, $a2
+
+	move $a0, $a2 		#lhu $a0, B
 	xor $a0, $a0, $v0
-	
-	
-	
 	jal F			   # Second Call
-	
-	
-	lw $t0, 4($sp)
-	lw $t1, 0($sp)
-	addi $sp, $sp, 8
+	lw $s0, 8($sp)
+	lw $s1, 4($sp)
 	# End of F function calls
-	
-	#printing the result
-    #move $a0, $v0
-    #li $v0, 34  # System call code for print hex
-    #syscall
+
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 12
     jr $ra
-    # exit call
-    #li $v0,10
-    #syscall
-	# W Function ENDS
+	# W Function ENDS    
 	
 F:
-	#lhu $t0, input2
-	addi $sp, $sp, -4
+	# a0 = X
+	addi $sp, $sp, -16
 	sw $ra, 0($sp)
-    move $t0, $a0
-    li $t1, 0xFF     # Mask to isolate x2x3
-    and $t1, $t0, $t1 # t1 has x2x3
-    sll $t1, $t1, 8   # t1 is x2.x3.(8bits of 0), after P(x0.x1) is done, result will be summed to t1, that's why there is this 8 bits of space
-    srl $t2, $t0, 8   # t2 is now x0x1
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    move $s0, $a0
+    li $s1, 0xFF     # Mask to isolate x2x3
+    and $s1, $s0, $s1 # s1 has x2x3
+    sll $s1, $s1, 8   # s1 is x2.x3.(8bits of 0), after P(x0.x1) is done, result will be summed to s1, that's why there is this 8 bits of space
+    srl $s2, $s0, 8   # s2 is now x0x1
     
-    # Prepare for P call on x0.x1 aka $t2
-    addi $sp, $sp, -12
-    sw $t0, 8($sp)
-    sw $t1, 4($sp)
-    sw $t2, 0($sp)
-    move $a0, $t2
-    jal P
-    lw $t2, 0($sp)
-    lw $t1, 4($sp)
-    lw $t0, 8($sp)
-    addi $sp, $sp, 12
-    move $t2, $v0     # t2 has P(x0.x1)'s result
+    # Prepare for P call on x0.x1 aka $s2    
+    move $a0, $s2
+    jal P_f
+    move $s2, $v0     # s2 has P(x0.x1)'s result
     # End of P call
     
-    add $t1, $t1, $t2              #    t1 => x2.x3.0.0      (in hexadecimal)
-    							      #    t2 =>  0. 0.P(x0.x1)    (in hexadecimal)
+    add $s1, $s1, $s2              #    s1 => x2.x3.0.0      (in hexadecimal)
+    							      #    s2 =>  0. 0.P(x0.x1)    (in hexadecimal)
     								  #  +______________________ 
-                                   #    t1 => x2.x3.P(x0.x1)
+                                   #    s1 => x2.x3.P(x0.x1)
                                    
-    # Prepare for the first S call on t1
-    addi $sp, $sp, -12
-    sw $t0, 8($sp)
-    sw $t1, 4($sp)
-    sw $t2, 0($sp)
-    move $a0, $t1
+    # Prepare for the first S call on s1
+    move $a0, $s1
     li $a1, 1
     jal S_large
-    lw $t2, 0($sp)
-    lw $t1, 4($sp)
-    lw $t0, 8($sp)
-    addi $sp, $sp, 12
     # End of first S call
-    sll $t2, $v0, 8  	   # 2 calls will be made to the function and the ultimate result will be formed in $t7 by addition
-    add $t0, $0, $t2        # 1st and 2nd hexadecimal digits of the result are completed with this
+    sll $s2, $v0, 8  	   # 2 calls will be made to the function and the ultimate result will be formed in $s7 by addition
+    add $s0, $0, $s2        # 1st and 2nd hexadecimal digits of the result are completed with this
     
-    
-    # Prepare for the second S call on t1
-    addi $sp, $sp, -12
-    sw $t0, 8($sp)
-    sw $t1, 4($sp)
-    sw $t2, 0($sp)
-    move $a0, $t1
+    # Prepare for the second S call on s1
+    move $a0, $s1
     li $a1, 2
     jal S_large
-    lw $t2, 0($sp)
-    lw $t1, 4($sp)
-    lw $t0, 8($sp)
-    addi $sp, $sp, 12
     
-    add $t0, $t0, $v0       # no shifting necessary, just add the returned value
+    add $s0, $s0, $v0       # no shifting necessary, just add the returned value
 	# End of S calls
 	
-	# Prepare for L call on t0
-	addi $sp, $sp, -12
-    sw $t0, 8($sp)
-    sw $t1, 4($sp)
-    sw $t2, 0($sp)
-    move $a0, $t0
+	# Prepare for L call on s0
+    move $a0, $s0
     jal L
-    lw $t2, 0($sp)
-    lw $t1, 4($sp)
-    lw $t0, 8($sp)
-    addi $sp, $sp, 12
     # End of L call
-    
-    #printing the result
-    #move $a0, $v0
-    #li $v0, 34  # System call code for print hex
-    #syscall
+
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 16
     jr $ra
-    # exit call
-    #li $v0,10
-    #syscall
-	# F Function ENDS                            
+	# F Function ENDS       
+	                   
 
 inv_F:   # F(X) = Y
 		#  Z = S^−1( L^−1(Y) )
@@ -747,7 +951,16 @@ inv_F:   # F(X) = Y
 
 ###
 	
-P:
+P_f:
+	addi $sp, $sp, -28  # Allocate space on the stack
+    	sw $t1, 0($sp)      # Save $t1 on the stack
+    	sw $t2, 4($sp)      # Save $t2 on the stack
+    	sw $t3, 8($sp)      # Save $t3 on the stack
+    	sw $t4, 12($sp)     # Save $t4 on the stack
+    	sw $t5, 16($sp)     # Save $t5 on the stack
+    	sw $t6, 20($sp)     # Save $t6 on the stack
+    	sw $t7, 24($sp)     # Save $t7 on the stack
+
 	move $t1, $a0
 	li $t2, 0     # loop index = 0
 	li $t6, 1     # init mask value that will be doubled every iteration
@@ -768,7 +981,16 @@ loop_P:
 	j loop_P
 end_loop_P:
 	move $v0, $t5
+	lw $t1, 0($sp)      # Restore $t1 from the stack
+    	lw $t2, 4($sp)      # Restore $t2 from the stack
+    	lw $t3, 8($sp)      # Restore $t3 from the stack
+    	lw $t4, 12($sp)     # Restore $t4 from the stack
+    	lw $t5, 16($sp)     # Restore $t5 from the stack
+    	lw $t6, 20($sp)     # Restore $t6 from the stack
+    	lw $t7, 24($sp)     # Restore $t7 on the stack
+    	addi $sp, $sp, 28   # Deallocate space from the stack
 	jr $ra	
+		
 	
 inv_P:
 	move $t1, $a0
@@ -813,6 +1035,11 @@ inv_S_large:
 	jr $ra
 
 S_large:
+	 addi $sp, $sp, -12  # Allocate space on the stack
+    	sw $t1, 0($sp)      # Save $t1 on the stack
+    	sw $t2, 4($sp)      # Save $t2 on the stack
+    	sw $t3, 8($sp)      # Save $t3 on the stack
+
 	andi $t1, $a1, 0x1     # if a1 = 2, t1 is 0 ; elseif a1=1, t1 is 1
 	mul $t2, $t1, 8
 	li $t3, 0xFF
@@ -827,10 +1054,19 @@ S_large:
 	lbu $t3, LongTable_0($t3)    # load the mapped value
 	
 	move $v0, $t3
-	jr $ra
-    
- 	
-L: # a0: input
+	
+	lw $t1, 0($sp)         # Restore $t1 from the stack
+    	lw $t2, 4($sp)         # Restore $t2 from the stack
+    	lw $t3, 8($sp)         # Restore $t3 from the stack
+    	addi $sp, $sp, 12      # Deallocate space from the stack
+	jr $ra	
+	
+L: 
+	addi $sp, $sp, -16  # Allocate space on the stack
+    	sw $t1, 0($sp)      # Save $t1 on the stack
+    	sw $t2, 4($sp)      # Save $t2 on the stack
+    	sw $t3, 8($sp)      # Save $t3 on the stack
+    	sw $t4, 12($sp)     # Save $t4 on the stack
 	move $t1, $a0
 	rol $t3, $t1, 6
 	andi $t2, $t3, 0xFFFF0000 # t2 has the upper half of t3
@@ -847,7 +1083,15 @@ L: # a0: input
 	xor $t2, $t2, $t3
 	xor $t2, $t1, $t2
 	move $v0, $t2
-	jr $ra
+	
+	
+	lw $t1, 0($sp)     # Restore $t1 from the stack
+    	lw $t2, 4($sp)     # Restore $t2 from the stack
+    	lw $t3, 8($sp)     # Restore $t3 from the stack
+    	lw $t4, 12($sp)    # Restore $t4 from the stack
+    	addi $sp, $sp, 16  # Deallocate space from the stack
+    	
+    	jr $ra
 	
 inv_L:
 	#Z = Y ⊕ (Y<<<10) ⊕ (Y>>>10)
